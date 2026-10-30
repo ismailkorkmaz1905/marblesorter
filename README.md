@@ -1,19 +1,17 @@
 # Marble Sort Bot
 
-> **Onur'a not:** Selam Onur! "Hackleyebilirsin" demiştin ya, ciddiye aldım :)
-> Marble Sort'a solver bot yazdım. Oyun motorunu simüle edip en iyi kutu sırasını
-> buluyor, bandı yıldız sınırının altında tutmaya çalışıyor, kutuları da güvenli
-> olduğu anda üst üste bırakıyor. Sıralamada tepedeysem sebebi bu, king bende
-> kalsın artık :D
->
-> Bir fikir: botlar için ayrı bir "bot ligi" açsan nasıl olur? Solver yazan herkes
-> orada kapışsın, ilk başvuru benden :)
->
-> İsmail
-
 Onur'un Marble Sort oyununun normal modu için otomatik oyuncu ve hamle yardımcısı.
-Sürüm: 1.4.0.
+Sürüm: 1.4.1.
 31 Ekim 2026 tarihinde yüklenen HAR içindeki oyun koduna göre hazırlanmıştır.
+
+## 1.4.1 düzeltmesi
+
+- 67. bölüm gibi durumlarda bot çözümsüz bir duruma girip sonsuza kadar
+  "plan bulunamadı" diye bekliyordu. Artık plan seçilince üst üste bırakma fizik
+  kopyasında baştan sona denenir; çıkmaza giriyorsa o bölüm kutular tek tek
+  açılarak oynanır. Toplar durduğunda plan canlı duruma göre tekrar doğrulanır.
+  Yine de plan bulunamazsa bölüm yeniden başlatılır.
+- 60-70 arası 20 denemede: 20/20 kazanma, 49 yıldız (eski 47), süre 1037 s (eski 1173 s).
 
 ## 1.4.0 yenilikleri
 
