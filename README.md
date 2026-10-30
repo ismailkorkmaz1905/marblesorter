@@ -1,5 +1,17 @@
 # Marble Sort Bot
 
+> **Onur'a not:** Selam Onur! "Hackleyebilirsin" demiştin ya, ciddiye aldım :)
+> Marble Sort'a solver bot yazdım. Oyun motorunu simüle edip en iyi kutu sırasını
+> buluyor, bandı yıldız sınırının altında tutmaya çalışıyor, kutuları da güvenli
+> olduğu anda üst üste bırakıyor. Sıralamada tepedeysem sebebi bu, king bende
+> kalsın artık :D
+>
+> Bir fikir: botlar için ayrı bir "bot ligi" açsan nasıl olur? Solver yazan herkes
+> orada kapışsın, ilk başvuru benden :)
+>
+> İsmail
+
+
 Onur'un Marble Sort oyununun normal modu için otomatik oyuncu ve hamle yardımcısı.
 Sürüm: 1.4.1.
 31 Ekim 2026 tarihinde yüklenen HAR içindeki oyun koduna göre hazırlanmıştır.
