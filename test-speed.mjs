@@ -15,7 +15,7 @@ for (const seed of seeds) for (const n of levels) for (const dim of [[390, 844],
   Math.random = makeRng(seed + n + dim[0]).next;
   const g = new Game(generateLevel(n), () => {});
   g.setLayout(computeLayout(...dim, 160, 10, g.board.W, g.board.H, g.cap)); g.speed = 3;
-  let frames = 0, searchMs = 0, peak = 0, plan = null, searches = 0, waitFrames = 0;
+  let careful = false, restarts = 0, noPlan = 0, frames = 0, searchMs = 0, peak = 0, plan = null, searches = 0, waitFrames = 0;
   const tick = k => { for (let i = 0; i < k; i++) { g.update(1/60); frames++; peak = Math.max(peak, g.beltCount()); } };
   while (g.state === 'play' && frames < 60*600) {
     if (bot.step0) { // new bot exposes its own decision function
@@ -25,6 +25,11 @@ for (const seed of seeds) for (const n of levels) for (const dim of [[390, 844],
       tick(Math.max(1, Math.ceil(ms / 1000 * 60)));
       continue;
     }
+    if (plan?.seq.length && bot.planFeasible && plan.checked !== g.moves && bot.settled(g)) {
+      plan.checked = g.moves;
+      if (!bot.planFeasible(g, plan.seq, peak)) { plan = null; careful = true; continue; }
+    }
+    if (careful && plan?.seq.length && !bot.settled(g)) { tick(3); continue; }
     if (plan?.seq.length && bot.releaseDecision) {
       const i = plan.seq[0], d = bot.releaseDecision(g, i, plan.bound, peak);
       if (d === 'tap') { g.tap(plan.seq.shift()); plan.fresh = false; }
@@ -49,11 +54,24 @@ for (const seed of seeds) for (const n of levels) for (const dim of [[390, 844],
     const c = await bot.chooseContinuous(g, { peak });
     const ms = performance.now() - t; searchMs += ms; searches++;
     tick(Math.ceil(ms / 1000 * 60) + 1);
-    if (!c) { tick(300); continue; }
+    if (!c) {
+      if (bot.planFeasible && ++noPlan >= 2) { // restart level, as the live bot does
+        restarts++; noPlan = 0; peak = 0; plan = null; careful = true;
+        const fresh = new Game(generateLevel(n), () => {});
+        fresh.setLayout(g.L); fresh.speed = 3; Object.assign(g, fresh); tick(60);
+      } else tick(120);
+      continue;
+    }
+    noPlan = 0;
+    if (bot.pipelineSafe && !careful && !c.perfectPlan) {
+      const t1 = performance.now();
+      if (!(await bot.pipelineSafe(g, c.plan.seq, peak))) careful = true;
+      const ms1 = performance.now() - t1; searchMs += ms1; tick(Math.ceil(ms1 / 1000 * 60));
+    }
     plan = { seq: [...c.plan.seq], perfect: c.perfectPlan, pipeline: c.executionFast, bound: bot.planBound ? bot.planBound(g, c, !!globalThis.__msTurbo) : 0, fresh: true };
   }
   const stars = g.state !== 'won' ? 0 : peak / g.cap <= 0.6 ? 3 : peak / g.cap <= 0.85 ? 2 : 1;
-  rows.push({ n, dim: dim[0], state: g.state, stars, sec: +(frames/60).toFixed(1), searchSec: +(searchMs/1000).toFixed(2), searches });
+  rows.push({ n, dim: dim[0], state: g.state, stars, sec: +(frames/60).toFixed(1), searchSec: +(searchMs/1000).toFixed(2), searches, restarts });
   console.log(JSON.stringify(rows.at(-1)));
 }
 const tot = k => rows.reduce((s, r) => s + r[k], 0);

@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.4.0. Sıralama paneli: 1.1.0.
+// Bot: 1.4.1. Sıralama paneli: 1.1.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.4.0') {
+    if (globalThis.MarbleSortBot.version === '1.4.1') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -281,6 +281,21 @@
       nodes: result.nodes + exact.nodes, executionFast: !!options.fast, perfectPlan: !!options.perfect } : null;
   }
 
+  // Re-check a cached plan against the live, settled state. Physical routing
+  // can drift from the model (which tray a colour reaches first); catching it
+  // early leaves room to replan instead of walking into a dead end.
+  function planFeasible(g, seq, peak = 0) {
+    if (!settled(g)) return true;
+    const { root, cols, cap } = snapshot(g, peak);
+    let s = root;
+    for (const i of seq) {
+      if (!s.b.tappableList().includes(i)) return false;
+      s = advance(s, i, cols, cap);
+      if (!s) return false;
+    }
+    return complete(s, cols);
+  }
+
   // Largest belt peak that still earns the same star tier as `peak`.
   function tierBound(cap, peak) {
     for (const f of [0.6, 0.85]) {
@@ -313,6 +328,28 @@
     return fresh && f.ok;
   }
 
+  // Full physical rollout of a plan with overlapping releases. If this fails,
+  // the plan is only safe when played one box at a time.
+  async function pipelineSafe(g, sequence, peak = 0, options = {}) {
+    const sim = cloneGame(g), alive = options.alive ?? (() => true);
+    let cursor = 0, frames = 0;
+    peak = Math.max(peak, sim.beltCount());
+    while (frames < 36000) {
+      if (frames % 3 === 0 && cursor < sequence.length) {
+        const i = sequence[cursor], d = releaseDecision(sim, i, 0, peak);
+        if (d === 'tap' || (d === 'settled' && sim.tappable(i) && sim.load() + sim.board.count[i] <= sim.cap - 1)) {
+          if (!sim.tap(i)) return false;
+          cursor++;
+        } else if (d === 'settled') return false;
+      }
+      sim.update(1 / 60); frames++;
+      peak = Math.max(peak, sim.beltCount());
+      if (sim.state !== 'play') return sim.state === 'won';
+      if (frames % 240 === 239) { await sleep(); if (!alive()) cancelled(); }
+    }
+    return false;
+  }
+
   // Release bound for a plan. Default: stay in the best star tier reached so
   // far (bound 0 grows with the live peak). Turbo: allow the plan's forecast tier.
   const planBound = (g, choice, turbo = false) =>
@@ -324,14 +361,15 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.4.0', tierBound, releaseDecision, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.4.1', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
   let panel, text, marker, timer, nextBox, fastBox, turboBox, leadBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
-  let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0;
+  let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
+  const carefulLevels = new Set(); // levels where overlapping releases drifted
   const app = () => globalThis.__ms?.app;
   const say = value => { if (text) text.textContent = value; };
   const hideMarker = () => { if (marker) marker.hidden = true; };
@@ -393,7 +431,14 @@
     const button = g?.state === 'lost'
       ? document.querySelector('#m-lose.show [data-action="retry"]')
       : document.querySelector('[data-action="restart"]');
-    if (!button) { say('Yeniden deneme ekranı bekleniyor...'); return; }
+    if (!button) {
+      // No restart control found: play out a box so the game reaches its own
+      // lose screen, whose retry button is known.
+      const i = g?.state === 'play' ? g.board.tappableList()[0] : undefined;
+      if (i !== undefined && settled(g)) { g.tap(i); say(message + ' Bölüm bitirilip yeniden denenecek.'); }
+      else say('Yeniden deneme ekranı bekleniyor...');
+      return;
+    }
     cached = null; nextAttemptAt = performance.now() + 5000;
     say(message + ' Mevcut bölüm yeniden deneniyor.');
     button.click();
@@ -421,7 +466,7 @@
       return;
     }
     if (a.paused || document.hidden) { say('Oyun duraklatıldı. Devam edince bot da devam eder.'); return; }
-    if (lastGame !== g) { lastGame = g; waitStarted = g.time; cached = null; }
+    if (lastGame !== g) { lastGame = g; waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
     const perfect = perfectBox.checked;
     if (perfect && Math.max(a.maxLoad, g.beltCount()) > starLimit(g)) {
       stop('Bu bölümde 3 yıldız sınırı zaten aşılmış. 3 yıldız için yalnızca mevcut bölümü yeniden oynamak gerekir.'); return;
@@ -430,6 +475,14 @@
     if (cached && (!cacheAllowed || !validCache(g))) cached = null;
     if (cached?.seq.length) {
       const i = cached.seq[0];
+      if (cached.checked !== g.moves && settled(g)) {
+        cached.checked = g.moves;
+        if (!planFeasible(g, cached.seq, a.maxLoad)) {
+          // Routing drifted: finish this level one box at a time.
+          careful = true; carefulLevels.add(g.level.n); cached = null; return;
+        }
+      }
+      if (careful && !settled(g)) { say('Dikkatli mod: toplar yerleşiyor...'); return; }
       const decision = releaseDecision(g, i, cached.bound, a.maxLoad);
       if (decision === 'tap') { tapCached(g); return; }
       if (decision === 'wait') {
@@ -471,18 +524,28 @@
       if (a.paused || document.hidden || !settled(g) || key(snapshot(g).root) !== before) return;
       if (!choice) {
         if (perfect) stop('3 yıldız sınırında güvenli bir plan bulunamadı. Bölümü bitirmeden duruldu.');
-        else {
-          nextAttemptAt = performance.now() + 5000;
-          say('Plan bulunamadı. 5 saniye sonra arama tekrar denenecek.');
+        else if (++noPlan >= 2) {
+          // No legal completion exists from here: restart instead of waiting forever.
+          noPlan = 0; carefulLevels.add(g.level.n);
+          retryLevel('Bölüm çözümsüz bir duruma girdi.');
+        } else {
+          nextAttemptAt = performance.now() + 2000;
+          say('Plan bulunamadı. Arama tekrar denenecek.');
         }
         return;
       }
+      noPlan = 0;
       const i = choice.index;
       const row = Math.floor(i / g.board.W) + 1, col = i % g.board.W + 1;
       point(g, i);
       say(`${COLORS[g.board.color[i]]}: ${row}. satır, ${col}. sütun. ` +
         `Tahmini bölüm zirvesi: ${choice.forecast.peak}/${g.cap}.`);
       if (mode === 'hint') { running = false; return; }
+      if (cacheAllowed && !careful && !choice.perfectPlan &&
+        !(await pipelineSafe(g, choice.plan.seq, a.maxLoad, { alive }))) {
+        careful = true; carefulLevels.add(g.level.n);
+      }
+      if (!alive() || !settled(g) || key(snapshot(g).root) !== before) return;
       if (cacheAllowed) {
         cached = { g, seq: [...choice.plan.seq], board: boardKey(g.board), moves: g.moves,
           trail: g.trail.length, pipeline: choice.executionFast, perfect: choice.perfectPlan, fresh: true,
