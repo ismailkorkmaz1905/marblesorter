@@ -1,0 +1,41 @@
+MARBLE SORT - TAM PAKET
+Bot 1.4.0 + sıralama paneli 1.1.0
+Yeni: kutular üst üste bırakılır (yaklaşık %24 daha hızlı), Turbo seçeneği,
+Lider farkı: 1. sıradayken fark 1000 puana ulaşınca bekler, düşünce devam eder.
+
+1. ZIP dosyasını bir klasöre çıkar.
+2. Oyunu aynı Chrome profilinde aç: https://marblesort.onurtirpan.io/
+3. Normal bir bölüm aç. F12 > Console sekmesine geç.
+4. start.js dosyasını Not Defteri ile açıp tamamını kopyala.
+5. Oyun sekmesinin Console alanına yapıştırıp Enter'a bas.
+6. Bot panelinde Başlat'a bas.
+
+start.js hem botu hem sıralama panelini ekler. Diğer JavaScript
+dosyalarını ayrıca yapıştırman gerekmez.
+
+Varsayılanlar:
+- Oyunun 3x hızı açık.
+- Sonraki bölüme otomatik geçiş açık.
+- Hedef bölüm 0: sınırsız devam.
+- Önce 3 yıldızlık plan arar; bulamazsa en iyi bulduğu planla devam eder.
+- Kaybedilen veya uzun süre takılan mevcut bölümü yeniden dener.
+- Sıralama paneli 15 saniyede bir yenilenir.
+
+Tamamlanan bölümler bu kodla sıfırlanmaz. Oyun ilerlemesi mevcut
+Chrome profilinin oyun kaydındadır; ZIP oyuncu kaydı veya oturum
+anahtarı içermez. Açık bölümün anlık konumu sayfa yenilenirse
+kaybolabilir; tamamlanmış bölüm ilerlemesi oyunun kaydından yüklenir.
+
+PC uyanık ve oyun sekmesi görünür kalmalıdır. Uykuya geçince çalışmaz;
+kilit ekranında veya arka planda çalışacağına güvenme.
+
+Bot panelini geri göster: MarbleSortBot.show()
+Sıralamayı yenile: MarbleSortLeaderboard.refresh()
+
+Ayrı dosyalar:
+- marble-sort-bot.user.js: yalnızca bot.
+- marble-leaderboard.user.js: yalnızca sıralama paneli.
+- README.md: ayrıntılar ve test açıklamaları.
+- test-*.mjs, *test-results.json, engine/: doğrulama dosyaları.
+
+Her bölümde 3 yıldız ve kesintisiz ilerleme garantisi yoktur.

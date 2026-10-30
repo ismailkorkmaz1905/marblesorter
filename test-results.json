@@ -1,0 +1,303 @@
+{
+  "botVersion": "1.2.0",
+  "source": "Uploaded HAR, original game engine",
+  "liveWebsiteTested": false,
+  "measurements": [
+    {
+      "level": 1,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 9,
+      "stars": 3,
+      "moves": 6
+    },
+    {
+      "level": 1,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 9,
+      "stars": 3,
+      "moves": 6
+    },
+    {
+      "level": 2,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 9,
+      "stars": 3,
+      "moves": 12
+    },
+    {
+      "level": 2,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 9,
+      "stars": 3,
+      "moves": 12
+    },
+    {
+      "level": 3,
+      "viewport": "390x844",
+      "cap": 25,
+      "peak": 9,
+      "stars": 3,
+      "moves": 15
+    },
+    {
+      "level": 3,
+      "viewport": "1440x900",
+      "cap": 25,
+      "peak": 9,
+      "stars": 3,
+      "moves": 15
+    },
+    {
+      "level": 4,
+      "viewport": "390x844",
+      "cap": 31,
+      "peak": 12,
+      "stars": 3,
+      "moves": 20
+    },
+    {
+      "level": 4,
+      "viewport": "1440x900",
+      "cap": 31,
+      "peak": 12,
+      "stars": 3,
+      "moves": 20
+    },
+    {
+      "level": 5,
+      "viewport": "390x844",
+      "cap": 18,
+      "peak": 11,
+      "stars": 2,
+      "moves": 16
+    },
+    {
+      "level": 5,
+      "viewport": "1440x900",
+      "cap": 18,
+      "peak": 11,
+      "stars": 2,
+      "moves": 16
+    },
+    {
+      "level": 7,
+      "viewport": "390x844",
+      "cap": 30,
+      "peak": 15,
+      "stars": 3,
+      "moves": 29
+    },
+    {
+      "level": 7,
+      "viewport": "1440x900",
+      "cap": 30,
+      "peak": 15,
+      "stars": 3,
+      "moves": 29
+    },
+    {
+      "level": 10,
+      "viewport": "390x844",
+      "cap": 18,
+      "peak": 15,
+      "stars": 2,
+      "moves": 29
+    },
+    {
+      "level": 10,
+      "viewport": "1440x900",
+      "cap": 18,
+      "peak": 18,
+      "stars": 1,
+      "moves": 29
+    },
+    {
+      "level": 14,
+      "viewport": "390x844",
+      "cap": 28,
+      "peak": 13,
+      "stars": 3,
+      "moves": 37
+    },
+    {
+      "level": 14,
+      "viewport": "1440x900",
+      "cap": 28,
+      "peak": 12,
+      "stars": 3,
+      "moves": 37
+    },
+    {
+      "level": 15,
+      "viewport": "390x844",
+      "cap": 18,
+      "peak": 16,
+      "stars": 1,
+      "moves": 32
+    },
+    {
+      "level": 15,
+      "viewport": "1440x900",
+      "cap": 18,
+      "peak": 15,
+      "stars": 2,
+      "moves": 32
+    },
+    {
+      "level": 20,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 16,
+      "stars": 2,
+      "moves": 38
+    },
+    {
+      "level": 20,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 16,
+      "stars": 2,
+      "moves": 38
+    },
+    {
+      "level": 25,
+      "viewport": "390x844",
+      "cap": 18,
+      "peak": 15,
+      "stars": 2,
+      "moves": 28
+    },
+    {
+      "level": 25,
+      "viewport": "1440x900",
+      "cap": 18,
+      "peak": 15,
+      "stars": 2,
+      "moves": 28
+    },
+    {
+      "level": 30,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 16,
+      "stars": 2,
+      "moves": 40
+    },
+    {
+      "level": 30,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 18,
+      "stars": 1,
+      "moves": 40
+    },
+    {
+      "level": 40,
+      "viewport": "390x844",
+      "cap": 23,
+      "peak": 21,
+      "stars": 1,
+      "moves": 36
+    },
+    {
+      "level": 40,
+      "viewport": "1440x900",
+      "cap": 23,
+      "peak": 21,
+      "stars": 1,
+      "moves": 36
+    },
+    {
+      "level": 50,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 18,
+      "stars": 1,
+      "moves": 39
+    },
+    {
+      "level": 50,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 18,
+      "stars": 1,
+      "moves": 39
+    },
+    {
+      "level": 75,
+      "viewport": "390x844",
+      "cap": 21,
+      "peak": 18,
+      "stars": 1,
+      "moves": 38
+    },
+    {
+      "level": 75,
+      "viewport": "1440x900",
+      "cap": 21,
+      "peak": 18,
+      "stars": 1,
+      "moves": 38
+    },
+    {
+      "level": 100,
+      "viewport": "390x844",
+      "cap": 20,
+      "peak": 18,
+      "stars": 1,
+      "moves": 46
+    },
+    {
+      "level": 100,
+      "viewport": "1440x900",
+      "cap": 20,
+      "peak": 19,
+      "stars": 1,
+      "moves": 46
+    },
+    {
+      "liveReplan": 1,
+      "cap": 20,
+      "peak": 9,
+      "moves": 6
+    },
+    {
+      "liveReplan": 7,
+      "cap": 30,
+      "peak": 13,
+      "moves": 29
+    },
+    {
+      "liveReplan": 10,
+      "cap": 18,
+      "peak": 15,
+      "moves": 29
+    },
+    {
+      "liveReplan": 30,
+      "cap": 20,
+      "peak": 16,
+      "moves": 40
+    },
+    {
+      "partialBoxGame": 7,
+      "cap": 30,
+      "peak": 15,
+      "moves": 29
+    },
+    {
+      "summary": {
+        "schedules": 32,
+        "liveReplanGames": 4,
+        "partialBoxGames": 1,
+        "wins": 37,
+        "threeStars": 12,
+        "durationSeconds": 30.87
+      }
+    }
+  ]
+}
