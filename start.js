@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 2.0.0. Sıralama paneli: 1.3.0.
+// Bot: 2.0.1. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '2.0.0') {
+    if (globalThis.MarbleSortBot.version === '2.0.1') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -393,7 +393,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '2.0.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '2.0.1', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -491,8 +491,12 @@
     const poll = () => {
       const award = lastAward && lastAward.at >= sinceWall ? lastAward : null;
       if (!award && performance.now() - since < 8000) { setTimeout(poll, 250); return; }
-      if (award && /HTTP 422/.test(String(award.why)) && minBox && Number(minBox.value) > 0)
-        minBox.value = (Math.round((Number(minBox.value) + 0.02) * 100) / 100).toFixed(2);
+      // Self-tune toward the server's limit: +0.02 after a 422, -0.005 after a
+      // scored win, never below 0.30 s/box. 0 keeps the hold switched off.
+      if (award && minBox && Number(minBox.value) > 0) {
+        const v = Number(minBox.value) + (/HTTP 422/.test(String(award.why)) ? 0.02 : award.p ? -0.005 : 0);
+        minBox.value = Math.max(0.30, Math.round(v * 1000) / 1000).toFixed(3);
+      }
       wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs, boxes: boxesAtWin,
         note: award ? (award.p ? '' : String(award.why ?? 'neden yok')) : 'cevap yok' });
       if (wins.length > 200) wins.shift();
@@ -742,7 +746,7 @@
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
       <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 20 önerilir)</label>
-      <label>Kutu başına en az: <input class="minsec" type="number" min="0" step="0.01" value="0.33" style="width:55px"> sn (sunucu sınırı, 422 gelirse kendisi artırır)</label>
+      <label>Kutu başına en az: <input class="minsec" type="number" min="0" step="0.005" value="0.33" style="width:55px"> sn (422'de artar, kabulde azalır, en az 0.30)</label>
       <label><input class="prepare" type="checkbox" checked> Sonraki bölümü önceden planla</label>
       <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
