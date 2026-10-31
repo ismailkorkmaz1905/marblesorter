@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      1.7.0
+// @version      1.8.0
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.7.0') {
+    if (globalThis.MarbleSortBot.version === '1.8.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -132,7 +132,39 @@
     Math.max(peak, g.beltCount()) <= starLimit(g) && g.tappable(index) &&
     g.load() + g.board.count[index] <= starLimit(g);
 
+  // Beam results are memoised by root state, so a search done ahead of time
+  // (see prepareLevel) is reused instantly when that level starts.
+  const beamMemo = new Map();
   async function beam(model, options = {}) {
+    const memoKey = key(model.root) + '|' + model.root.peak + '|' + (options.width ?? 128) + '|' + (options.limit ?? '');
+    const hit = beamMemo.get(memoKey);
+    if (hit) return hit;
+    const result = await beamSearch(model, options);
+    beamMemo.set(memoKey, result);
+    if (beamMemo.size > 8) beamMemo.delete(beamMemo.keys().next().value);
+    return result;
+  }
+
+  // Model of a level's untouched starting state, identical to snapshot() of a
+  // fresh Game, built without the live game or its layout.
+  function levelModel(level) {
+    const cols = level.cols.map(arr => [...arr]);
+    const root = { b: level.board.clone(), pool: new Array(10).fill(0), ptr: cols.map(() => 0), fill: cols.map(() => 0),
+      peak: 0, residualPeak: 0, cost: 0, seq: [], load: 0 };
+    resolve(root, cols);
+    root.residualPeak = root.load;
+    return { root, cols, cap: level.capacity };
+  }
+
+  // Run the same beams chooseContinuous will ask for, ahead of time.
+  async function prepareLevel(level, options = {}) {
+    const model = levelModel(level), limit = Math.floor(level.capacity * 0.6);
+    const perfect = await beam(model, { ...options, width: 512, limit });
+    if (!perfect.plans.length) await beam(model, { ...options, width: 2048, limit });
+    await beam(model, { ...options, width: 512, limit: undefined });
+  }
+
+  async function beamSearch(model, options = {}) {
     const { root, cols, cap } = model;
     const width = options.width ?? 128;
     const alive = options.alive ?? (() => true);
@@ -365,12 +397,12 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.7.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.8.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, stats, marker, timer, runGuardBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
+  let panel, text, stats, marker, timer, runGuardBox, prepareBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
   let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
@@ -458,6 +490,18 @@
     return false;
   }
 
+  // Plan the next level in the background while this one plays.
+  let preparedFor = 0;
+  function prepareNext(g) {
+    const n = g.level.n + 1;
+    if (preparedFor === n) return;
+    preparedFor = n;
+    const token = generation;
+    import(new URL('js/levelgen.js', location.href).href)
+      .then(m => prepareLevel(m.generateLevel(n), { alive: () => running && token === generation }))
+      .catch(err => { preparedFor = 0; if (err.message !== 'cancelled') console.warn('[MarbleSortBot] ön plan', err.message); });
+  }
+
   // Run guard: the game asks the server for a run id when a level starts and
   // silently drops the win if that request failed. Do not play such a level.
   let runGame = null, runState = 'wait';
@@ -528,6 +572,7 @@
     const run = mode === 'auto' && runGuardBox.checked ? runReady(g) : 'ok';
     if (run === 'none' && !g.moves) { retryLevel('Bölüm başlangıcı sunucuya ulaşmadı, puan sayılmayacaktı.'); return; }
     if (run === 'wait' && cached?.seq.length && !g.moves) { say('Sunucu bölüm başlangıcını onaylıyor...'); return; }
+    if (cached && prepareBox.checked) prepareNext(g);
     if (cached?.seq.length) {
       const i = cached.seq[0];
       if (cached.checked !== g.moves && settled(g)) {
@@ -656,6 +701,7 @@
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
       <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 20 önerilir)</label>
+      <label><input class="prepare" type="checkbox" checked> Sonraki bölümü önceden planla</label>
       <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
       <label>Lider farkı: <input class="lead" type="number" min="0" step="100" value="1000" style="width:70px"> puan (0 = kapalı)</label>
@@ -665,6 +711,7 @@
     text = root.querySelector('.status');
     stats = root.querySelector('.stats');
     runGuardBox = root.querySelector('.runguard');
+    prepareBox = root.querySelector('.prepare');
     nextBox = root.querySelector('.next');
     fastBox = root.querySelector('.fast');
     turboBox = root.querySelector('.turbo');
