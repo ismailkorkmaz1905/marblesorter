@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.9.1. Sıralama paneli: 1.3.0.
+// Bot: 2.0.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.9.1') {
+    if (globalThis.MarbleSortBot.version === '2.0.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -393,14 +393,14 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.9.1', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '2.0.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
   let panel, text, stats, marker, timer, runGuardBox, prepareBox, minBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
-  let levelStartedAt = 0, lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
+  let levelBoxes = 0, levelStartedAt = 0, lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
   const app = () => globalThis.__ms?.app;
   const say = value => { if (text) text.textContent = value; };
@@ -426,12 +426,15 @@
     cached.moves === g.moves && cached.trail === g.trail.length;
 
   // Server times each level: hold the final box until the level is old enough.
+  // The server rejects (HTTP 422) wins faster than about 0.3 s per box, timed
+  // from level start. Hold the final box until boxes x perBox has passed.
   function holdLastBox(g) {
-    const min = Math.max(0, Number(minBox?.value) || 0) * 1000;
+    const perBox = Math.max(0, Number(minBox?.value) || 0);
+    const min = perBox * (levelBoxes || 0) * 1000;
     if (!min || g.board.blocksLeft() !== 1) return false;
     const left = min - (performance.now() - levelStartedAt);
     if (left <= 0) return false;
-    say(`Son kutu, en kısa bölüm süresi için ${Math.ceil(left / 1000)} sn bekletiliyor.`);
+    say(`Sunucu süre sınırı: son kutu ${Math.ceil(left / 1000)} sn bekletiliyor (${levelBoxes} kutu x ${perBox} sn).`);
     return true;
   }
 
@@ -483,12 +486,14 @@
   function trackPoints(g) {
     if (pointsGame === g) return;
     pointsGame = g;
-    const level = g.level.n, speed = g.speed, since = performance.now(), sinceWall = Date.now() - 1000;
+    const level = g.level.n, speed = g.speed, since = performance.now(), sinceWall = Date.now() - 1000, boxesAtWin = levelBoxes;
     const secs = levelStartedAt ? Math.round((performance.now() - levelStartedAt) / 100) / 10 : null;
     const poll = () => {
       const award = lastAward && lastAward.at >= sinceWall ? lastAward : null;
       if (!award && performance.now() - since < 8000) { setTimeout(poll, 250); return; }
-      wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs,
+      if (award && /HTTP 422/.test(String(award.why)) && minBox && Number(minBox.value) > 0)
+        minBox.value = (Math.round((Number(minBox.value) + 0.02) * 100) / 100).toFixed(2);
+      wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs, boxes: boxesAtWin,
         note: award ? (award.p ? '' : String(award.why ?? 'neden yok')) : 'cevap yok' });
       if (wins.length > 200) wins.shift();
       showStats();
@@ -598,7 +603,7 @@
     // tick in case the game resets it on a new level or settings change.
     const speed = Math.min(20, Math.max(1, Math.round(Number(speedBox.value) || 3)));
     if (mode === 'auto' && speed > 3 && g.speed !== speed) g.speed = speed;
-    if (lastGame !== g) { lastGame = g; levelStartedAt = performance.now(); waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
+    if (lastGame !== g) { lastGame = g; levelStartedAt = performance.now(); levelBoxes = g.moves ? 0 : g.board.blocksLeft(); waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
     const perfect = perfectBox.checked;
     if (perfect && Math.max(a.maxLoad, g.beltCount()) > starLimit(g)) {
       stop('Bu bölümde 3 yıldız sınırı zaten aşılmış. 3 yıldız için yalnızca mevcut bölümü yeniden oynamak gerekir.'); return;
@@ -737,7 +742,7 @@
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
       <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 20 önerilir)</label>
-      <label>En kısa bölüm süresi: <input class="minsec" type="number" min="0" step="1" value="0" style="width:50px"> sn (0 = kapalı)</label>
+      <label>Kutu başına en az: <input class="minsec" type="number" min="0" step="0.01" value="0.33" style="width:55px"> sn (sunucu sınırı, 422 gelirse kendisi artırır)</label>
       <label><input class="prepare" type="checkbox" checked> Sonraki bölümü önceden planla</label>
       <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
