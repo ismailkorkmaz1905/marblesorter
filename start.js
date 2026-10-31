@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 2.0.1. Sıralama paneli: 1.3.0.
+// Bot: 2.1.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '2.0.1') {
+    if (globalThis.MarbleSortBot.version === '2.1.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -100,15 +100,22 @@
     });
   }
 
-  function advance(s, i, cols, cap, limit = Infinity) {
+  function advance(s, i, cols, cap, limit = Infinity, riskLimit = Infinity) {
     if (s.load >= cap) return null; // A full unmatched belt cannot admit the next colour.
     if (s.peak > limit || s.load + s.b.count[i] > limit) return null;
+    // Deadlock risk: the belt only locks when it is full of balls with no tray.
+    // Balls of this box that fit an open front tray flow straight through.
+    const color = s.b.color[i];
+    let absorb = 0;
+    for (let k = 0; k < cols.length; k++) if (s.ptr[k] < cols[k].length && cols[k][s.ptr[k]] === color) absorb += TRAY - s.fill[k];
+    const risk = Math.max(s.risk ?? 0, s.load + s.b.count[i] - Math.min(s.b.count[i], absorb));
+    if (risk > riskLimit) return null;
     const n = {
       b: s.b.clone(), pool: s.pool.slice(), ptr: s.ptr.slice(), fill: s.fill.slice(),
       // An upper bound, not an exact physical prediction: all balls in this box
       // could enter the belt before any of them reaches a tray.
       peak: Math.max(s.peak, Math.min(cap, s.load + s.b.count[i])),
-      residualPeak: s.residualPeak, cost: s.cost, seq: [...s.seq, i], load: 0,
+      residualPeak: s.residualPeak, cost: s.cost, seq: [...s.seq, i], load: 0, risk,
     };
     n.pool[s.b.color[i]] += s.b.count[i];
     n.b.clearCell(i);
@@ -119,7 +126,7 @@
     return n;
   }
 
-  const rank = (a, b) => a.peak - b.peak || a.residualPeak - b.residualPeak ||
+  const rank = (a, b) => a.peak - b.peak || (a.risk ?? 0) - (b.risk ?? 0) || a.residualPeak - b.residualPeak ||
     a.load - b.load || a.cost - b.cost;
   const complete = (s, cols) => !s.b.blocksLeft() && !s.load &&
     s.ptr.every((p, k) => p === cols[k].length);
@@ -132,7 +139,7 @@
   // (see prepareLevel) is reused instantly when that level starts.
   const beamMemo = new Map();
   async function beam(model, options = {}) {
-    const memoKey = key(model.root) + '|' + model.root.peak + '|' + (options.width ?? 128) + '|' + (options.limit ?? '');
+    const memoKey = key(model.root) + '|' + model.root.peak + '|' + (options.width ?? 128) + '|' + (options.limit ?? '') + '|' + (options.riskLimit ?? '');
     const hit = beamMemo.get(memoKey);
     if (hit) return hit;
     const result = await beamSearch(model, options);
@@ -170,7 +177,7 @@
       const dedup = new Map();
       for (const s of states) {
         for (const i of s.b.tappableList()) {
-          const n = advance(s, i, cols, cap, options.limit);
+          const n = advance(s, i, cols, cap, options.limit, options.riskLimit);
           nodes++;
           if (n) {
             // Keep different first moves so the physical preview has alternatives.
@@ -216,7 +223,7 @@
       const k = key(s), old = memo.get(k);
       if (old !== undefined && old <= s.peak) return;
       memo.set(k, s.peak);
-      const children = moves.map(i => advance(s, i, cols, cap, options.limit)).filter(Boolean).sort(rank);
+      const children = moves.map(i => advance(s, i, cols, cap, options.limit, options.riskLimit)).filter(Boolean).sort(rank);
       for (const n of children) {
         if (nodes % 256 === 0) { await sleep(); if (!alive()) cancelled(); }
         await visit(n);
@@ -382,6 +389,50 @@
     return false;
   }
 
+  // Physics beam for levels the model cannot handle (its order-free tray
+  // bookkeeping drifts from real routing): states are real Game clones, one box
+  // per step, each played until the balls settle. Slow (about a minute) but
+  // the result replays reliably when boxes are opened one at a time.
+  async function physicsPlan(g, options = {}) {
+    const alive = options.alive ?? (() => true), width = options.width ?? 24;
+    const deadline = performance.now() + (options.ms ?? 180000);
+    const settle = c => {
+      let peak = c.beltCount();
+      for (let f = 0; f < 7200; f++) {
+        c.update(1 / 60); peak = Math.max(peak, c.beltCount());
+        if (c.state !== 'play' || settled(c)) break;
+      }
+      return peak;
+    };
+    let beamStates = [{ g: cloneGame(g), seq: [], peak: 0, load: 0 }];
+    while (beamStates.length && beamStates[0].g.board.blocksLeft()) {
+      const next = [], seen = new Set();
+      for (const st of beamStates) {
+        for (const i of st.g.board.tappableList()) {
+          if (!alive()) cancelled();
+          if (performance.now() > deadline) return null;
+          const c = cloneGame(st.g);
+          if (!c.tap(i)) continue;
+          const pk = settle(c);
+          if (c.state === 'lost') continue;
+          const k = boardKey(c.board) + '|' + c.cols.map(x => x.trays.length) + '|' +
+            c.slots.filter(Boolean).map(b => b.c).sort().join('');
+          if (seen.has(k)) continue;
+          seen.add(k);
+          next.push({ g: c, seq: [...st.seq, i], peak: Math.max(st.peak, pk), load: c.load() });
+          await sleep();
+        }
+      }
+      next.sort((a, b) => a.load - b.load || a.peak - b.peak);
+      beamStates = next.slice(0, width);
+    }
+    const won = beamStates.filter(st => {
+      for (let f = 0; f < 1200 && st.g.state === 'play'; f++) st.g.update(1 / 60);
+      return st.g.state === 'won';
+    }).sort((a, b) => a.peak - b.peak);
+    return won.length ? won[0].seq : null;
+  }
+
   // Release bound for a plan. Default: stay in the best star tier reached so
   // far (bound 0 grows with the live peak). Turbo: allow the plan's forecast tier.
   const planBound = (g, choice, turbo = false) =>
@@ -393,7 +444,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '2.0.1', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '2.1.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -560,10 +611,16 @@
     return runState;
   }
 
-  function retryLevel(message) {
+  const levelFailures = new Map(), physicsPlans = new Map();
+  function retryLevel(message, failure = true) {
     if (mode !== 'auto' || perfectBox.checked) { stop(message); return; }
     if (performance.now() < nextAttemptAt) return;
     const g = app()?.game;
+    if (failure && g?.level) {
+      const n = g.level.n, f = (levelFailures.get(n) || 0) + 1;
+      levelFailures.set(n, f);
+      if (f >= 6) { physicsPlans.delete(n); levelFailures.set(n, 2); } // retry the physics search
+    }
     const button = g?.state === 'lost'
       ? document.querySelector('#m-lose.show [data-action="retry"]')
       : document.querySelector('[data-action="restart"]');
@@ -615,11 +672,16 @@
     const cacheAllowed = mode === 'auto';
     if (cached && (!cacheAllowed || !validCache(g))) cached = null;
     const run = mode === 'auto' && runGuardBox.checked ? runReady(g) : 'ok';
-    if (run === 'none' && !g.moves) { retryLevel('Bölüm başlangıcı sunucuya ulaşmadı, puan sayılmayacaktı.'); return; }
+    if (run === 'none' && !g.moves) { retryLevel('Bölüm başlangıcı sunucuya ulaşmadı, puan sayılmayacaktı.', false); return; }
     if (run === 'wait' && cached?.seq.length && !g.moves) { say('Sunucu bölüm başlangıcını onaylıyor...'); return; }
     if (cached && prepareBox.checked) prepareNext(g);
     if (cached?.seq.length) {
       const i = cached.seq[0];
+      if (cached.physics) {
+        if (settled(g)) tapCached(g);
+        else say(`Zor bölüm, fizik planı: ${cached.seq.length} kutu kaldı. Toplar yerleşiyor...`);
+        return;
+      }
       if (cached.checked !== g.moves && settled(g)) {
         cached.checked = g.moves;
         if (!planFeasible(g, cached.seq, a.maxLoad)) {
@@ -661,6 +723,28 @@
     busy = true;
     const token = generation;
     const alive = () => running && token === generation && app()?.game === g;
+    // After two failures on this level, switch to the physics planner.
+    if (mode === 'auto' && !g.moves && (levelFailures.get(g.level.n) || 0) >= 2) {
+      try {
+        let seq = physicsPlans.get(g.level.n);
+        if (!seq) {
+          say(`Zor bölüm (${levelFailures.get(g.level.n)} başarısız deneme): fizik araması yapılıyor, 1-2 dk sürebilir...`);
+          seq = await physicsPlan(g, { alive });
+          if (!alive()) return;
+          if (seq) physicsPlans.set(g.level.n, seq);
+          else { levelFailures.set(g.level.n, 0); say('Fizik araması sonuç vermedi, normal planla devam.'); }
+        }
+        if (seq && !g.moves && settled(g)) {
+          careful = true;
+          cached = { g, seq: [...seq], board: boardKey(g.board), moves: g.moves, trail: g.trail.length,
+            perfect: false, physics: true, fresh: false, bound: g.cap - 1 };
+          if (!(runGuardBox.checked && runReady(g) !== 'ok')) tapCached(g);
+          return;
+        }
+      } catch (err) { if (err.message !== 'cancelled') console.warn('[MarbleSortBot] fizik araması', err); return; }
+      finally { busy = false; }
+      busy = true;
+    }
     const before = key(snapshot(g).root);
     try {
       say('Hamleler hesaplanıyor...');
@@ -785,7 +869,7 @@
   }
 
   Object.assign(api, {
-    start: () => start(), stop, points: () => wins.slice(), hint: () => { stop(); start('hint'); },
+    start: () => start(), stop, points: () => wins.slice(), failures: levelFailures, hint: () => { stop(); start('hint'); },
     step: () => { stop(); start('one'); },
     show: () => { if (panel) panel.hidden = false; },
     destroy: () => { stop(); if (globalThis.fetch !== pageFetch) globalThis.fetch = pageFetch; clearInterval(timer); panel?.remove(); marker?.remove(); delete globalThis.MarbleSortBot; },
