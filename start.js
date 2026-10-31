@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.5.2. Sıralama paneli: 1.3.0.
+// Bot: 1.6.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.5.2') {
+    if (globalThis.MarbleSortBot.version === '1.6.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -361,12 +361,12 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.5.2', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.6.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, marker, timer, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
+  let panel, text, stats, marker, timer, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
   let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
@@ -403,6 +403,35 @@
     point(g, i); waitStarted = g.time;
     say(`${cached.perfect ? '3 yıldız planı' : 'En iyi bulunan plan'}: ${cached.seq.length} hamle kaldı. Bant: ${g.beltCount()}/${g.cap}.`);
     return true;
+  }
+
+  // Points tracker: the win screen shows the server's award ("+N pts").
+  // The server times each level, so this is how speed settings are compared.
+  const wins = [];
+  let pointsGame = null, pointsSince = 0;
+  function readPoints(g) {
+    if (pointsGame === g) return true;
+    if (!document.querySelector('#m-win.show')) { pointsSince = 0; return false; }
+    if (!pointsSince) pointsSince = performance.now();
+    const t = document.querySelector('#win-rank')?.textContent || '';
+    const m = t.match(/\+\s*([\d.,]+)\s*pts/);
+    if (!m && !/not ranked/i.test(t) && performance.now() - pointsSince < 3000) return false;
+    wins.push({ p: m ? Number(m[1].replace(/[.,]/g, '')) : 0, at: Date.now(), speed: g.speed, level: g.level.n,
+      note: m ? '' : t ? 'sayılmadı' : 'cevap yok' });
+    if (wins.length > 200) wins.shift();
+    pointsGame = g; pointsSince = 0;
+    console.log('[MarbleSortBot] puan', JSON.stringify(wins.at(-1)));
+    showStats();
+    return true;
+  }
+  function showStats() {
+    if (!stats) return;
+    const last = wins.slice(-20), w = wins.at(-1);
+    const total = last.reduce((t, x) => t + x.p, 0), zero = last.filter(x => !x.p).length;
+    const mins = last.length > 1 ? (last.at(-1).at - last[0].at) / 60000 : 0;
+    stats.textContent = `Son bölüm (${w.level}, ${w.speed}x): ${w.p ? '+' + w.p + ' puan' : w.note}. ` +
+      `Son ${last.length}: ortalama ${Math.round(total / last.length)} puan/bölüm` +
+      (mins > 0 ? `, ${Math.round((total - last[0].p) / mins)} puan/dk` : '') + (zero ? `, ${zero} puansız` : '') + '.';
   }
 
   // Lead guard: between levels, stay on the win screen while we are #1 and
@@ -454,6 +483,7 @@
       if (perfectBox.checked && a.maxLoad > starLimit(g)) {
         stop('Bu bölümde 3 yıldız sınırı aşılmış. Sonraki bölüme geçilmedi.'); return;
       }
+      if (mode === 'auto' && !readPoints(g)) { say('Sunucunun verdiği puan bekleniyor...'); return; }
       const target = Math.max(0, Number(targetBox.value) || 0);
       if (mode === 'auto' && nextBox.checked && holdLead()) return;
       if (target && g.level.n >= target) { stop(`${g.level.n}. bölüm tamamlandı. Hedefe ulaşıldı.`); return; }
@@ -598,6 +628,7 @@
       <header><b>Marble Sort Bot</b><button class="close" title="Botu kapat">X</button></header>
       <div class="buttons"><button class="start">Başlat</button><button class="stop">Durdur</button><button class="hint">İpucu</button><button class="one">Tek hamle</button></div>
       <p class="status">Normal bölümü açıp Başlat'a bas.</p>
+      <p class="stats" style="font-size:11px;color:#becce0"></p>
       <label><input class="next" type="checkbox" checked> Sonraki bölüme otomatik geç</label>
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
@@ -608,6 +639,7 @@
       <details><summary>Çözüm hakkında</summary>Kutuları güvenli olduğu anda üst üste bırakır; ulaşılan yıldız seviyesini korur. Turbo bu sınırı plan tahminine kadar gevşetir. Lider farkı: 1. sıradayken arkandakiyle fark bu değere ulaşınca bölüm arasında bekler, fark düşünce devam eder. Önce 3 yıldızlık güvenli plan arar. Bulamazsa en iyi bulduğu planla devam eder; her bölümde 3 yıldız garanti değildir. Kaybedilen veya takılan mevcut bölümü yeniden dener. Sekme gizlenince duraklar; uyku veya kilit ekranında çalışma garantisi yoktur. Tamamlanan bölümleri sıfırlamaz.</details>
     </section>`;
     text = root.querySelector('.status');
+    stats = root.querySelector('.stats');
     nextBox = root.querySelector('.next');
     fastBox = root.querySelector('.fast');
     turboBox = root.querySelector('.turbo');
@@ -633,7 +665,7 @@
   }
 
   Object.assign(api, {
-    start: () => start(), stop, hint: () => { stop(); start('hint'); },
+    start: () => start(), stop, points: () => wins.slice(), hint: () => { stop(); start('hint'); },
     step: () => { stop(); start('one'); },
     show: () => { if (panel) panel.hidden = false; },
     destroy: () => { stop(); clearInterval(timer); panel?.remove(); marker?.remove(); delete globalThis.MarbleSortBot; },
