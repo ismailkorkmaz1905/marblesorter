@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      1.5.1
+// @version      1.5.2
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.5.1') {
+    if (globalThis.MarbleSortBot.version === '1.5.2') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -365,7 +365,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.5.1', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.5.2', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -418,7 +418,7 @@
     const board = globalThis.MarbleSortLeaderboard;
     if (!board) { leadHeld = false; return false; }
     const info = board.latest;
-    const fresh = info && Date.now() - info.at < 60000;
+    const fresh = info && Date.now() - info.at < 660000;
     if (fresh) leadHeld = info.rank === 1 && info.lead !== null && info.lead >= margin;
     if (leadHeld) {
       say(`1. sıradasın, fark ${info.lead} puan (hedef ${margin}). Bekleniyor; fark düşerse devam edilecek.`);
