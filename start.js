@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.6.0. Sıralama paneli: 1.3.0.
+// Bot: 1.7.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.6.0') {
+    if (globalThis.MarbleSortBot.version === '1.7.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -361,12 +361,12 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.6.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.7.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, stats, marker, timer, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
+  let panel, text, stats, marker, timer, runGuardBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
   let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
@@ -408,21 +408,23 @@
   // Points tracker: the win screen shows the server's award ("+N pts").
   // The server times each level, so this is how speed settings are compared.
   const wins = [];
-  let pointsGame = null, pointsSince = 0;
-  function readPoints(g) {
-    if (pointsGame === g) return true;
-    if (!document.querySelector('#m-win.show')) { pointsSince = 0; return false; }
-    if (!pointsSince) pointsSince = performance.now();
-    const t = document.querySelector('#win-rank')?.textContent || '';
-    const m = t.match(/\+\s*([\d.,]+)\s*pts/);
-    if (!m && !/not ranked/i.test(t) && performance.now() - pointsSince < 3000) return false;
-    wins.push({ p: m ? Number(m[1].replace(/[.,]/g, '')) : 0, at: Date.now(), speed: g.speed, level: g.level.n,
-      note: m ? '' : t ? 'sayılmadı' : 'cevap yok' });
-    if (wins.length > 200) wins.shift();
-    pointsGame = g; pointsSince = 0;
-    console.log('[MarbleSortBot] puan', JSON.stringify(wins.at(-1)));
-    showStats();
-    return true;
+  let pointsGame = null;
+  // Non-blocking: poll the win screen's "+N pts" for up to 6 s after a win.
+  // The text survives the next-level click until the following win clears it.
+  function trackPoints(g) {
+    if (pointsGame === g) return;
+    pointsGame = g;
+    const level = g.level.n, speed = g.speed, since = performance.now();
+    const poll = () => {
+      const t = document.querySelector('#win-rank')?.textContent || '';
+      const m = t.match(/\+\s*([\d.,]+)\s*pts/);
+      if (!m && !/not ranked/i.test(t) && performance.now() - since < 6000) { setTimeout(poll, 250); return; }
+      wins.push({ p: m ? Number(m[1].replace(/[.,]/g, '')) : 0, at: Date.now(), speed, level,
+        note: m ? '' : t ? 'sayılmadı' : 'cevap yok' });
+      if (wins.length > 200) wins.shift();
+      showStats();
+    };
+    poll();
   }
   function showStats() {
     if (!stats) return;
@@ -450,6 +452,19 @@
       return true;
     }
     return false;
+  }
+
+  // Run guard: the game asks the server for a run id when a level starts and
+  // silently drops the win if that request failed. Do not play such a level.
+  let runGame = null, runState = 'wait';
+  function runReady(g) {
+    if (runGame !== g) {
+      runGame = g; runState = 'wait';
+      const run = app()?.run;
+      if (!run?.then) runState = 'ok';
+      else run.then(r => { if (runGame === g) runState = r ? 'ok' : 'none'; }, () => { if (runGame === g) runState = 'none'; });
+    }
+    return runState;
   }
 
   function retryLevel(message) {
@@ -483,7 +498,7 @@
       if (perfectBox.checked && a.maxLoad > starLimit(g)) {
         stop('Bu bölümde 3 yıldız sınırı aşılmış. Sonraki bölüme geçilmedi.'); return;
       }
-      if (mode === 'auto' && !readPoints(g)) { say('Sunucunun verdiği puan bekleniyor...'); return; }
+      if (mode === 'auto') trackPoints(g);
       const target = Math.max(0, Number(targetBox.value) || 0);
       if (mode === 'auto' && nextBox.checked && holdLead()) return;
       if (target && g.level.n >= target) { stop(`${g.level.n}. bölüm tamamlandı. Hedefe ulaşıldı.`); return; }
@@ -506,6 +521,9 @@
     }
     const cacheAllowed = mode === 'auto';
     if (cached && (!cacheAllowed || !validCache(g))) cached = null;
+    const run = mode === 'auto' && runGuardBox.checked ? runReady(g) : 'ok';
+    if (run === 'none' && !g.moves) { retryLevel('Bölüm başlangıcı sunucuya ulaşmadı, puan sayılmayacaktı.'); return; }
+    if (run === 'wait' && cached?.seq.length && !g.moves) { say('Sunucu bölüm başlangıcını onaylıyor...'); return; }
     if (cached?.seq.length) {
       const i = cached.seq[0];
       if (cached.checked !== g.moves && settled(g)) {
@@ -583,7 +601,8 @@
         cached = { g, seq: [...choice.plan.seq], board: boardKey(g.board), moves: g.moves,
           trail: g.trail.length, pipeline: choice.executionFast, perfect: choice.perfectPlan, fresh: true,
           bound: planBound(g, choice, turboBox.checked) };
-        tapCached(g);
+        // First box waits for the server's run id (checked on the next tick).
+        if (!(runGuardBox.checked && !g.moves && runReady(g) !== 'ok')) tapCached(g);
         return;
       }
       if (perfect && !canPerfectRelease(g, i, a.maxLoad)) { stop('3 yıldız sınırını korumak için duruldu.'); return; }
@@ -632,7 +651,8 @@
       <label><input class="next" type="checkbox" checked> Sonraki bölüme otomatik geç</label>
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
-      <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 10 önerilir)</label>
+      <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 20 önerilir)</label>
+      <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
       <label>Lider farkı: <input class="lead" type="number" min="0" step="100" value="1000" style="width:70px"> puan (0 = kapalı)</label>
       <label>Hedef bölüm: <input class="target" type="number" min="0" step="1" value="0" style="width:70px"> (0 = sınırsız)</label>
@@ -640,6 +660,7 @@
     </section>`;
     text = root.querySelector('.status');
     stats = root.querySelector('.stats');
+    runGuardBox = root.querySelector('.runguard');
     nextBox = root.querySelector('.next');
     fastBox = root.querySelector('.fast');
     turboBox = root.querySelector('.turbo');
