@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Nearby Leaderboard
 // @namespace    local.marble-sort
-// @version      1.2.0
+// @version      1.3.0
 // @description  Önündeki 3 oyuncu, sen ve arkandaki 1 oyuncu. Yalnızca GET kullanır.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -13,7 +13,7 @@
 // Kaldır: MarbleSortLeaderboard.destroy()
 (() => {
   'use strict';
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   if (globalThis.MarbleSortLeaderboard?.version === VERSION) {
     globalThis.MarbleSortLeaderboard.show?.();
     void globalThis.MarbleSortLeaderboard.refresh?.();
@@ -105,7 +105,7 @@
 
   async function refresh() {
     if (busy || closed || document.hidden) return;
-    // Back off after errors: 15 s, 30 s, 60 s ... up to 5 min.
+    // Every 5 min; after errors back off to 10, 20, up to 30 min.
     if (Date.now() < nextTry) return;
     ensureMount();
     busy = true; button.disabled = true;
@@ -123,13 +123,13 @@
       if (closed) return;
       render(data);
       lastGood = new Date(); failures = 0; nextTry = 0;
-      statusEl.textContent = `${timeFormat.format(lastGood)} - 15 saniyede bir yenilenir`;
+      statusEl.textContent = `${timeFormat.format(lastGood)} - 5 dakikada bir yenilenir`;
     } catch (err) {
       if (closed) return;
       statusEl.textContent = `Sıralama alınamadı${lastGood ? '; son veri ' + timeFormat.format(lastGood) : ''}.`;
       if (!lastGood) noteEl.textContent = 'Yenile ile tekrar deneyebilirsin. Oyun ve bot devam eder.';
       failures++;
-      nextTry = Date.now() + Math.min(300000, 15000 * 2 ** (failures - 1));
+      nextTry = Date.now() + Math.min(1800000, 300000 * 2 ** (failures - 1));
       if (failures === 1) console.warn('[MarbleSortLeaderboard]', err.message, '- tekrar denemeler yavaşlatıldı.');
     } finally {
       clearTimeout(timeout); controller = null; busy = false;
@@ -137,7 +137,7 @@
     }
   }
 
-  const onVisible = () => { if (!document.hidden) void refresh(); };
+  const onVisible = () => {};
   Object.assign(api, {
     refresh: () => { nextTry = 0; return refresh(); },
     show: () => { if (host) { host.hidden = false; ensureMount(); } },
@@ -177,6 +177,6 @@
   root.querySelector('.close').onclick = () => api.destroy();
   ensureMount();
   document.addEventListener('visibilitychange', onVisible);
-  timer = setInterval(() => { void refresh(); }, 15000);
+  timer = setInterval(() => { void refresh(); }, 300000);
   void refresh();
 })();
