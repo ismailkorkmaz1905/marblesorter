@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.8.0. Sıralama paneli: 1.3.0.
+// Bot: 1.9.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.8.0') {
+    if (globalThis.MarbleSortBot.version === '1.9.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -393,14 +393,14 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.8.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.9.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, stats, marker, timer, runGuardBox, prepareBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
+  let panel, text, stats, marker, timer, runGuardBox, prepareBox, minBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
-  let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
+  let levelStartedAt = 0, lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
   const app = () => globalThis.__ms?.app;
   const say = value => { if (text) text.textContent = value; };
@@ -425,7 +425,18 @@
   const validCache = g => cached && cached.g === g && cached.board === boardKey(g.board) &&
     cached.moves === g.moves && cached.trail === g.trail.length;
 
+  // Server times each level: hold the final box until the level is old enough.
+  function holdLastBox(g) {
+    const min = Math.max(0, Number(minBox?.value) || 0) * 1000;
+    if (!min || g.board.blocksLeft() !== 1) return false;
+    const left = min - (performance.now() - levelStartedAt);
+    if (left <= 0) return false;
+    say(`Son kutu, en kısa bölüm süresi için ${Math.ceil(left / 1000)} sn bekletiliyor.`);
+    return true;
+  }
+
   function tapCached(g) {
+    if (holdLastBox(g)) return false;
     if (cached.perfect && !canPerfectRelease(g, cached.seq[0], app().maxLoad)) {
       cached = null; return false;
     }
@@ -440,19 +451,36 @@
   // Points tracker: the win screen shows the server's award ("+N pts").
   // The server times each level, so this is how speed settings are compared.
   const wins = [];
-  let pointsGame = null;
+  let pointsGame = null, lastAward = null;
+  // The server's win reply is plain JSON { p, why, score, rank }; the game only
+  // shows p. Read it to learn why a win scored nothing.
+  const pageFetch = globalThis.fetch;
+  function hookFetch() {
+    if (globalThis.fetch !== pageFetch) return;
+    globalThis.fetch = async function (input, init) {
+      const res = await pageFetch.apply(this, arguments);
+      try {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        if (/api\/w(\?|$)/.test(url)) {
+          const at = Date.now();
+          res.clone().json().then(d => { lastAward = { ...d, at }; }, () => { lastAward = { p: 0, why: 'HTTP ' + res.status, at }; });
+        }
+      } catch {}
+      return res;
+    };
+  }
   // Non-blocking: poll the win screen's "+N pts" for up to 6 s after a win.
   // The text survives the next-level click until the following win clears it.
   function trackPoints(g) {
     if (pointsGame === g) return;
     pointsGame = g;
-    const level = g.level.n, speed = g.speed, since = performance.now();
+    const level = g.level.n, speed = g.speed, since = performance.now(), sinceWall = Date.now() - 1000;
+    const secs = levelStartedAt ? Math.round((performance.now() - levelStartedAt) / 100) / 10 : null;
     const poll = () => {
-      const t = document.querySelector('#win-rank')?.textContent || '';
-      const m = t.match(/\+\s*([\d.,]+)\s*pts/);
-      if (!m && !/not ranked/i.test(t) && performance.now() - since < 6000) { setTimeout(poll, 250); return; }
-      wins.push({ p: m ? Number(m[1].replace(/[.,]/g, '')) : 0, at: Date.now(), speed, level,
-        note: m ? '' : t ? 'sayılmadı' : 'cevap yok' });
+      const award = lastAward && lastAward.at >= sinceWall ? lastAward : null;
+      if (!award && performance.now() - since < 8000) { setTimeout(poll, 250); return; }
+      wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs,
+        note: award ? (award.p ? '' : String(award.why ?? 'neden yok')) : 'cevap yok' });
       if (wins.length > 200) wins.shift();
       showStats();
     };
@@ -462,10 +490,13 @@
     if (!stats) return;
     const last = wins.slice(-20), w = wins.at(-1);
     const total = last.reduce((t, x) => t + x.p, 0), zero = last.filter(x => !x.p).length;
+    const why = {};
+    for (const x of last) if (!x.p) why[x.note] = (why[x.note] || 0) + 1;
     const mins = last.length > 1 ? (last.at(-1).at - last[0].at) / 60000 : 0;
     stats.textContent = `Son bölüm (${w.level}, ${w.speed}x): ${w.p ? '+' + w.p + ' puan' : w.note}. ` +
       `Son ${last.length}: ortalama ${Math.round(total / last.length)} puan/bölüm` +
-      (mins > 0 ? `, ${Math.round((total - last[0].p) / mins)} puan/dk` : '') + (zero ? `, ${zero} puansız` : '') + '.';
+      (mins > 0 ? `, ${Math.round((total - last[0].p) / mins)} puan/dk` : '') + (zero ? `, ${zero} puansız (${Object.entries(why).map(([k, v]) => k + ' x' + v).join(', ')})` : '') +
+      (w.secs ? `. Son bölüm süresi ${w.secs} sn` : '') + '.';
   }
 
   // Lead guard: between levels, stay on the win screen while we are #1 and
@@ -558,7 +589,7 @@
     // tick in case the game resets it on a new level or settings change.
     const speed = Math.min(20, Math.max(1, Math.round(Number(speedBox.value) || 3)));
     if (mode === 'auto' && speed > 3 && g.speed !== speed) g.speed = speed;
-    if (lastGame !== g) { lastGame = g; waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
+    if (lastGame !== g) { lastGame = g; levelStartedAt = performance.now(); waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
     const perfect = perfectBox.checked;
     if (perfect && Math.max(a.maxLoad, g.beltCount()) > starLimit(g)) {
       stop('Bu bölümde 3 yıldız sınırı zaten aşılmış. 3 yıldız için yalnızca mevcut bölümü yeniden oynamak gerekir.'); return;
@@ -697,6 +728,7 @@
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
       <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 20 önerilir)</label>
+      <label>En kısa bölüm süresi: <input class="minsec" type="number" min="0" step="1" value="0" style="width:50px"> sn (0 = kapalı)</label>
       <label><input class="prepare" type="checkbox" checked> Sonraki bölümü önceden planla</label>
       <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
@@ -708,6 +740,8 @@
     stats = root.querySelector('.stats');
     runGuardBox = root.querySelector('.runguard');
     prepareBox = root.querySelector('.prepare');
+    minBox = root.querySelector('.minsec');
+    hookFetch();
     nextBox = root.querySelector('.next');
     fastBox = root.querySelector('.fast');
     turboBox = root.querySelector('.turbo');
@@ -736,7 +770,7 @@
     start: () => start(), stop, points: () => wins.slice(), hint: () => { stop(); start('hint'); },
     step: () => { stop(); start('one'); },
     show: () => { if (panel) panel.hidden = false; },
-    destroy: () => { stop(); clearInterval(timer); panel?.remove(); marker?.remove(); delete globalThis.MarbleSortBot; },
+    destroy: () => { stop(); if (globalThis.fetch !== pageFetch) globalThis.fetch = pageFetch; clearInterval(timer); panel?.remove(); marker?.remove(); delete globalThis.MarbleSortBot; },
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
   else mount();
