@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      2.1.0
+// @version      2.2.0
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '2.1.0') {
+    if (globalThis.MarbleSortBot.version === '2.2.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -143,7 +143,7 @@
   // (see prepareLevel) is reused instantly when that level starts.
   const beamMemo = new Map();
   async function beam(model, options = {}) {
-    const memoKey = key(model.root) + '|' + model.root.peak + '|' + (options.width ?? 128) + '|' + (options.limit ?? '') + '|' + (options.riskLimit ?? '');
+    const memoKey = key(model.root) + '|' + JSON.stringify(model.cols) + '|' + model.cap + '|' + model.root.peak + '|' + (options.width ?? 128) + '|' + (options.limit ?? '') + '|' + (options.riskLimit ?? '');
     const hit = beamMemo.get(memoKey);
     if (hit) return hit;
     const result = await beamSearch(model, options);
@@ -253,7 +253,7 @@
     const sim = cloneGame(g), alive = options.alive ?? (() => true);
     if (!alive()) cancelled();
     let peak = Math.max(options.peak ?? 0, sim.beltCount());
-    const sequence = Array.isArray(indexOrSequence) ? indexOrSequence : [indexOrSequence];
+    const sequence = Array.isArray(indexOrSequence) ? [...indexOrSequence] : [indexOrSequence];
     let frames = 0;
     if (options.fast) {
       let cursor = 0, sinceTap = 0;
@@ -277,7 +277,9 @@
       }
       return { ok: false, peak, reason: 'timeout' };
     }
-    for (const index of sequence) {
+    let repaired = false;
+    for (let cursor = 0; cursor < sequence.length; cursor++) {
+      const index = sequence[cursor];
       if (!alive()) cancelled();
       if (!sim.tap(index)) return { ok: false, peak, reason: 'blocked' };
       let idle = false;
@@ -289,10 +291,22 @@
         if (frames % 240 === 239) { await sleep(); if (!alive()) cancelled(); }
       }
       if (!idle) return { ok: false, peak, reason: 'timeout' };
+      // (from Astra / Codex PR #1) A settled physical state can route equal
+      // colours to different trays than the compact model. Repair the rest of
+      // the order from that actual state instead of rejecting the prefix.
+      if (options.repair && cursor + 1 < sequence.length &&
+          !planFeasible(sim, sequence.slice(cursor + 1), peak)) {
+        const suffix = await chooseContinuous(sim, { ...options, peak,
+          repair: false, requirePerfect: !!options.perfect });
+        if (!suffix) return { ok: false, peak, reason: 'routing' };
+        sequence.splice(cursor + 1, sequence.length, ...suffix.plan.seq);
+        repaired = true;
+      }
     }
     const finished = !sim.board.blocksLeft() && !sim.load() && sim.cols.every(col => !col.trays.length);
     return { ok: !Array.isArray(indexOrSequence) || finished, peak,
-      load: sim.beltCount(), seconds: sim.time - g.time, wallSeconds: frames / 60 };
+      load: sim.beltCount(), seconds: sim.time - g.time, wallSeconds: frames / 60,
+      ...(repaired ? { repaired: true, sequence } : {}) };
   }
 
   async function choose(g, options = {}) {
@@ -313,6 +327,17 @@
       const forecast = await preview(g, plan.seq, options);
       if (forecast.ok) choices.push({ index: plan.seq[0], plan, forecast });
     }
+    // Only repair when every complete rollout failed; never in strict mode.
+    if (!choices.length && !options.perfect && !options.fast && options.repair !== false) {
+      for (const plan of candidates) {
+        const forecast = await preview(g, plan.seq, { ...options, repair: true });
+        if (forecast.ok) {
+          const repairedPlan = forecast.sequence ? { ...plan, seq: forecast.sequence } : plan;
+          choices.push({ index: repairedPlan.seq[0], plan: repairedPlan, forecast });
+          break;
+        }
+      }
+    }
     // Compare full physical runs, not just the next box. Random rollout and
     // bounded search still do not prove the globally optimal live move.
     choices.sort((a, b) => options.fast
@@ -320,7 +345,7 @@
       : a.forecast.peak - b.forecast.peak || a.forecast.seconds - b.forecast.seconds || rank(a.plan, b.plan));
     const choice = choices[0];
     if (!choice && options.fast) return choose(g, { ...options, fast: false });
-    return choice ? { ...choice, modelExact: exact.modelExact && choice.plan.peak === exact.plan.peak,
+    return choice ? { ...choice, modelExact: !choice.forecast.repaired && exact.modelExact && choice.plan.peak === exact.plan.peak,
       nodes: result.nodes + exact.nodes, executionFast: !!options.fast, perfectPlan: !!options.perfect } : null;
   }
 
@@ -448,7 +473,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '2.1.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '2.2.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
