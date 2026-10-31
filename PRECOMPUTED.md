@@ -28,4 +28,4 @@ node test-offline.mjs
 
 The batch uses two workers and appends each completed result to `results/levels.jsonl`. Rerunning skips completed levels and resumes interrupted work. The summary updates every ten completions and at the end. The initial search tries beam widths 24 and 96, then uses the existing bot solver if both fail physical verification. It keeps the best observed star result among the accepted candidates; it does not exhaustively search for a three-star solution to every level.
 
-`start.js` is retained as the original bundle; `start-precomputed.js` is the new optional bundle. `marble-sort-bot.user.js` includes the cache integration but needs `offline-plans.js` loaded to use the saved plans.
+`start.js` remains the regular bot bundle; `start-precomputed.js` additionally includes the plan table. `marble-sort-bot.user.js` includes the cache integration but needs `offline-plans.js` loaded to use the saved plans.
