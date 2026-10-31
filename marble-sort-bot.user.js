@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      1.9.0
+// @version      1.9.1
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.9.0') {
+    if (globalThis.MarbleSortBot.version === '1.9.1') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -397,7 +397,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.9.0', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.9.1', prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -467,7 +467,16 @@
         const url = typeof input === 'string' ? input : input?.url || '';
         if (/api\/w(\?|$)/.test(url)) {
           const at = Date.now();
-          res.clone().json().then(d => { lastAward = { ...d, at }; }, () => { lastAward = { p: 0, why: 'HTTP ' + res.status, at }; });
+          res.clone().text().then(t => {
+            let d = null;
+            try { d = JSON.parse(t); } catch {}
+            if (res.ok && d) lastAward = { ...d, at };
+            else {
+              const why = 'HTTP ' + res.status + (t ? ': ' + t.slice(0, 120).replace(/\s+/g, ' ') : '');
+              lastAward = { p: 0, why, at };
+              console.warn('[MarbleSortBot] sunucu reddetti', why);
+            }
+          }, () => { lastAward = { p: 0, why: 'HTTP ' + res.status, at }; });
         }
       } catch {}
       return res;
