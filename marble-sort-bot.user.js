@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      2.2.0
+// @version      2.2.1-precomputed
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '2.2.0') {
+    if (globalThis.MarbleSortBot.version === '2.2.1-precomputed') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -468,12 +468,25 @@
     choice.perfectPlan ? starLimit(g) : turbo ? choice.forecast.peak : 0;
 
   async function chooseContinuous(g, options = {}) {
+    const entry = globalThis.__msOfflinePlans?.[g.level.n];
+    if (!g.moves && entry && entry.signature === offlineSignature(g) &&
+        (!options.requirePerfect || entry.stars === 3)) {
+      const forecast = await preview(g, entry.seq, { ...options, fast: false, repair: false });
+      if (forecast.ok && (!options.requirePerfect || forecast.peak <= starLimit(g))) {
+        return { index: entry.seq[0], plan: { seq: [...entry.seq], peak: forecast.peak },
+          forecast, offline: true, perfectPlan: !!options.requirePerfect, executionFast: false };
+      }
+    }
     const perfect = await choose(g, { ...options, perfect: true });
     if (perfect || options.requirePerfect) return perfect;
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '2.2.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  function offlineSignature(g) {
+    return JSON.stringify([g.board.W, g.board.H, boardKey(g.board),
+      g.board.gens.map(x => [x.at, x.out]), g.cap, g.cols.map(x => x.trays.map(t => t.c))]);
+  }
+  const api = { version: '2.2.1-precomputed', offlineSignature, physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -707,6 +720,21 @@
     if (cached?.seq.length) {
       const i = cached.seq[0];
       if (cached.physics) {
+        if (cached.offline && settled(g)) {
+          const current = cached, token = generation;
+          busy = true;
+          try {
+            const forecast = await preview(g, current.seq, { peak: a.maxLoad,
+              alive: () => running && generation === token && app()?.game === g });
+            if (cached !== current || !running || generation !== token || a.paused || document.hidden) return;
+            if (!forecast.ok || (current.perfect && forecast.peak > starLimit(g))) {
+              cached = null; careful = true; return;
+            }
+            if (settled(g)) tapCached(g);
+          } catch (err) { if (err.message !== 'cancelled') cached = null; }
+          finally { busy = false; }
+          return;
+        }
         if (settled(g)) tapCached(g);
         else say(`Zor bölüm, fizik planı: ${cached.seq.length} kutu kaldı. Toplar yerleşiyor...`);
         return;
@@ -799,13 +827,14 @@
       say(`${COLORS[g.board.color[i]]}: ${row}. satır, ${col}. sütun. ` +
         `Tahmini bölüm zirvesi: ${choice.forecast.peak}/${g.cap}.`);
       if (mode === 'hint') { running = false; return; }
-      if (cacheAllowed && !careful && !choice.perfectPlan &&
+      if (cacheAllowed && !choice.offline && !careful && !choice.perfectPlan &&
         !(await pipelineSafe(g, choice.plan.seq, a.maxLoad, { alive }))) {
         careful = true; carefulLevels.add(g.level.n);
       }
       if (!alive() || !settled(g) || key(snapshot(g).root) !== before) return;
       if (cacheAllowed) {
         cached = { g, seq: [...choice.plan.seq], board: boardKey(g.board), moves: g.moves,
+          physics: !!choice.offline, offline: !!choice.offline,
           trail: g.trail.length, pipeline: choice.executionFast, perfect: choice.perfectPlan, fresh: true,
           bound: planBound(g, choice, turboBox.checked) };
         // First box waits for the server's run id (checked on the next tick).
@@ -906,3 +935,4 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
   else mount();
 })();
+
