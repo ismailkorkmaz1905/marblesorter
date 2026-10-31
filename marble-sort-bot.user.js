@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marble Sort Solver
 // @namespace    local.marble-sort
-// @version      1.5.0
+// @version      1.5.1
 // @description  Normal mod icin hamle arama, ipucu ve otomatik oynama.
 // @match        https://marblesort.onurtirpan.io/*
 // @grant        none
@@ -11,7 +11,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.5.0') {
+    if (globalThis.MarbleSortBot.version === '1.5.1') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -365,7 +365,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.5.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.5.1', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -411,13 +411,12 @@
 
   // Lead guard: between levels, stay on the win screen while we are #1 and
   // ahead of #2 by at least the chosen margin; resume when the margin shrinks.
-  let leadHeld = false, leadAsked = 0;
+  let leadHeld = false;
   function holdLead() {
     const margin = Math.max(0, Number(leadBox.value) || 0);
     if (!margin) { leadHeld = false; return false; }
     const board = globalThis.MarbleSortLeaderboard;
     if (!board) { leadHeld = false; return false; }
-    if (performance.now() - leadAsked > 15000) { leadAsked = performance.now(); void board.refresh?.(); }
     const info = board.latest;
     const fresh = info && Date.now() - info.at < 60000;
     if (fresh) leadHeld = info.rank === 1 && info.lead !== null && info.lead >= margin;
