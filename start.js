@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.5.0. Sıralama paneli: 1.1.0.
+// Bot: 1.5.1. Sıralama paneli: 1.2.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.5.0') {
+    if (globalThis.MarbleSortBot.version === '1.5.1') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -361,7 +361,7 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.5.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.5.1', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
@@ -407,13 +407,12 @@
 
   // Lead guard: between levels, stay on the win screen while we are #1 and
   // ahead of #2 by at least the chosen margin; resume when the margin shrinks.
-  let leadHeld = false, leadAsked = 0;
+  let leadHeld = false;
   function holdLead() {
     const margin = Math.max(0, Number(leadBox.value) || 0);
     if (!margin) { leadHeld = false; return false; }
     const board = globalThis.MarbleSortLeaderboard;
     if (!board) { leadHeld = false; return false; }
-    if (performance.now() - leadAsked > 15000) { leadAsked = performance.now(); void board.refresh?.(); }
     const info = board.latest;
     const fresh = info && Date.now() - info.at < 60000;
     if (fresh) leadHeld = info.rank === 1 && info.lead !== null && info.lead >= margin;
@@ -649,7 +648,7 @@
 // Kaldır: MarbleSortLeaderboard.destroy()
 (() => {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   if (globalThis.MarbleSortLeaderboard?.version === VERSION) {
     globalThis.MarbleSortLeaderboard.show?.();
     void globalThis.MarbleSortLeaderboard.refresh?.();
@@ -694,7 +693,7 @@
   globalThis.MarbleSortLeaderboard = api;
 
   let host, root, rowsEl, statusEl, noteEl, rankEl, button, timer, controller;
-  let busy = false, closed = false, lastGood = null;
+  let busy = false, closed = false, lastGood = null, failures = 0, nextTry = 0;
   const format = new Intl.NumberFormat('tr-TR');
   const timeFormat = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmt = value => value === null ? '-' : format.format(value);
@@ -741,6 +740,8 @@
 
   async function refresh() {
     if (busy || closed || document.hidden) return;
+    // Back off after errors: 15 s, 30 s, 60 s ... up to 5 min.
+    if (Date.now() < nextTry) return;
     ensureMount();
     busy = true; button.disabled = true;
     controller = new AbortController();
@@ -756,13 +757,15 @@
       const data = await response.json();
       if (closed) return;
       render(data);
-      lastGood = new Date();
+      lastGood = new Date(); failures = 0; nextTry = 0;
       statusEl.textContent = `${timeFormat.format(lastGood)} - 15 saniyede bir yenilenir`;
     } catch (err) {
       if (closed) return;
       statusEl.textContent = `Sıralama alınamadı${lastGood ? '; son veri ' + timeFormat.format(lastGood) : ''}.`;
       if (!lastGood) noteEl.textContent = 'Yenile ile tekrar deneyebilirsin. Oyun ve bot devam eder.';
-      console.warn('[MarbleSortLeaderboard]', err.message);
+      failures++;
+      nextTry = Date.now() + Math.min(300000, 15000 * 2 ** (failures - 1));
+      if (failures === 1) console.warn('[MarbleSortLeaderboard]', err.message, '- tekrar denemeler yavaşlatıldı.');
     } finally {
       clearTimeout(timeout); controller = null; busy = false;
       if (button) button.disabled = false;
@@ -771,7 +774,7 @@
 
   const onVisible = () => { if (!document.hidden) void refresh(); };
   Object.assign(api, {
-    refresh,
+    refresh: () => { nextTry = 0; return refresh(); },
     show: () => { if (host) { host.hidden = false; ensureMount(); } },
     destroy: () => {
       closed = true; clearInterval(timer); controller?.abort();
@@ -805,7 +808,7 @@
   rowsEl = root.querySelector('tbody'); statusEl = root.querySelector('.status');
   noteEl = root.querySelector('.note'); rankEl = root.querySelector('.rank-pill');
   button = root.querySelector('.refresh');
-  button.onclick = () => { void refresh(); };
+  button.onclick = () => { nextTry = 0; void refresh(); };
   root.querySelector('.close').onclick = () => api.destroy();
   ensureMount();
   document.addEventListener('visibilitychange', onVisible);
