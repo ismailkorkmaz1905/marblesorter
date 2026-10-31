@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 1.4.1. Sıralama paneli: 1.1.0.
+// Bot: 1.5.0. Sıralama paneli: 1.1.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '1.4.1') {
+    if (globalThis.MarbleSortBot.version === '1.5.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -361,12 +361,12 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '1.4.1', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '1.5.0', tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, marker, timer, nextBox, fastBox, turboBox, leadBox, perfectBox, targetBox;
+  let panel, text, marker, timer, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
   let lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
@@ -466,6 +466,10 @@
       return;
     }
     if (a.paused || document.hidden) { say('Oyun duraklatıldı. Devam edince bot da devam eder.'); return; }
+    // The UI caps speed at 3x; the engine runs any multiplier. Re-apply every
+    // tick in case the game resets it on a new level or settings change.
+    const speed = Math.min(20, Math.max(1, Math.round(Number(speedBox.value) || 3)));
+    if (mode === 'auto' && speed > 3 && g.speed !== speed) g.speed = speed;
     if (lastGame !== g) { lastGame = g; waitStarted = g.time; cached = null; noPlan = 0; careful = carefulLevels.has(g.level.n); }
     const perfect = perfectBox.checked;
     if (perfect && Math.max(a.maxLoad, g.beltCount()) > starLimit(g)) {
@@ -598,6 +602,7 @@
       <label><input class="next" type="checkbox" checked> Sonraki bölüme otomatik geç</label>
       <label><input class="perfect" type="checkbox"> 3 yıldız şart: çözüm yoksa dur</label>
       <label><input class="fast" type="checkbox" checked> Oyunun 3x hızı</label>
+      <label>Hız çarpanı: <input class="speed" type="number" min="1" max="20" step="1" value="3" style="width:50px"> (oyun en fazla 3, 10 önerilir)</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
       <label>Lider farkı: <input class="lead" type="number" min="0" step="100" value="1000" style="width:70px"> puan (0 = kapalı)</label>
       <label>Hedef bölüm: <input class="target" type="number" min="0" step="1" value="0" style="width:70px"> (0 = sınırsız)</label>
@@ -608,6 +613,7 @@
     fastBox = root.querySelector('.fast');
     turboBox = root.querySelector('.turbo');
     leadBox = root.querySelector('.lead');
+    speedBox = root.querySelector('.speed');
     perfectBox = root.querySelector('.perfect');
     targetBox = root.querySelector('.target');
     fastBox.onchange = () => stop("Hız değişti. Başlat'a bas.");

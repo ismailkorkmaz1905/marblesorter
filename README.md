@@ -13,7 +13,7 @@
 
 
 Onur'un Marble Sort oyununun normal modu için otomatik oyuncu ve hamle yardımcısı.
-Sürüm: 1.4.1.
+Sürüm: 1.5.0. Yeni: panelde "Hız çarpanı" (oyunun 3x sınırını aşar, 10 önerilir).
 31 Ekim 2026 tarihinde yüklenen HAR içindeki oyun koduna göre hazırlanmıştır.
 
 ## 1.4.1 düzeltmesi
