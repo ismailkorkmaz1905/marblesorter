@@ -13,8 +13,20 @@
 
 
 Onur'un Marble Sort oyununun normal modu için otomatik oyuncu ve hamle yardımcısı.
-Sürüm: 1.5.0. Yeni: panelde "Hız çarpanı" (oyunun 3x sınırını aşar, 10 önerilir).
+Sürüm: 2.0.2.
 31 Ekim 2026 tarihinde yüklenen HAR içindeki oyun koduna göre hazırlanmıştır.
+
+## 2.0.2 düzeltmesi
+
+- 1100. bölümde arama modelinin bulduğu planlar, aynı renkteki topların gerçek
+  motorda farklı tepsilere dağılması nedeniyle fizik denemesinde eleniyordu.
+  Bot aynı aramayı tekrarlayıp yeniden başlatabiliyordu. Artık normal planların
+  tümü fizik denemesinde başarısızsa, tepsi dağılımının ayrıştığı yerleşmiş
+  durumdan kalan hamleler yeniden hesaplanır ve tam çözüm motorda doğrulanır.
+- Ek arama yalnızca normal sürekli moddaki başarısız planlara uygulanır.
+  "3 yıldız şart" seçeneği korunur; canlı oyun, kapasite ve puanlar değiştirilmez.
+- Plan önbelleği artık tepsi sıralarını ve bant kapasitesini de ayırt eder.
+- Tekrar test etmek için: `node test-routing.mjs`.
 
 ## 1.4.1 düzeltmesi
 
@@ -225,3 +237,4 @@ Ek paket kurulumu gerekmez. `engine/` klasöründeki altı JavaScript dosyası
 yüklenen HAR'dan çıkarılmış test bağımlılıklarıdır. Botun sitede çalışması için
 `start.js` dosyasını Console'a yapıştırman yeterlidir. HAR, oyuncu kimlikleri ve ağ kayıtları
 bu pakete eklenmemiştir.
+
