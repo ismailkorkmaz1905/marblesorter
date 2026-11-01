@@ -1,5 +1,5 @@
 // Marble Sort - bot ve sıralama paneli birlikte.
-// Bot: 2.2.0. Sıralama paneli: 1.3.0.
+// Bot: 2.3.0. Sıralama paneli: 1.3.0.
 // Bu dosyayı Not Defteri ile aç. Tamamını oyun sekmesindeki
 // F12 > Console alanına yapıştır, Enter'a bas, panelden Başlat'ı seç.
 // Oyun ilerlemesini sıfırlamaz. Bu paket kod yedeğidir.
@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   if (globalThis.MarbleSortBot) {
-    if (globalThis.MarbleSortBot.version === '2.2.0') {
+    if (globalThis.MarbleSortBot.version === '2.3.0') {
       globalThis.MarbleSortBot.show?.();
       return;
     }
@@ -469,12 +469,12 @@
     return choose(g, { ...options, perfect: false, fast: false, width: options.width ?? 512 });
   }
 
-  const api = { version: '2.2.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
+  const api = { version: '2.3.0', physicsPlan, prepareLevel, levelModel, tierBound, releaseDecision, planFeasible, pipelineSafe, settledRelease, planBound, settled, snapshot, beam, improve, choose, chooseContinuous, preview, cloneGame,
     key, boardKey, canRelease, starLimit, canPerfectRelease };
   globalThis.MarbleSortBot = api;
   if (typeof document === 'undefined') return; // Node tests use the real engine.
 
-  let panel, text, stats, marker, timer, runGuardBox, prepareBox, minBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
+  let panel, text, stats, marker, timer, runGuardBox, prepareBox, minBox, goalBox, nextBox, fastBox, turboBox, leadBox, speedBox, perfectBox, targetBox;
   let running = false, busy = false, generation = 0, mode = 'auto';
   let levelBoxes = 0, levelStartedAt = 0, lastGame = null, waitStarted = 0, cached = null, nextAttemptAt = 0, noPlan = 0, careful = false;
   const carefulLevels = new Set(); // levels where overlapping releases drifted
@@ -530,7 +530,7 @@
   // Points tracker: the win screen shows the server's award ("+N pts").
   // The server times each level, so this is how speed settings are compared.
   const wins = [];
-  let pointsGame = null, lastAward = null;
+  let pointsGame = null, lastAward = null, lastScore = null, awardDoneFor = null;
   // The server's win reply is plain JSON { p, why, score, rank }; the game only
   // shows p. Read it to learn why a win scored nothing.
   const pageFetch = globalThis.fetch;
@@ -573,7 +573,13 @@
         const v = Number(minBox.value) + (/HTTP 422/.test(String(award.why)) ? 0.02 : award.p ? -0.005 : 0);
         minBox.value = Math.max(0.30, Math.round(v * 1000) / 1000).toFixed(3);
       }
-      wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs, boxes: boxesAtWin,
+      const starText = document.querySelector('.stars')?.textContent || '';
+      const stars = (starText.match(/⭐/g) || []).length || null;
+      const tier = level % 10 === 0 ? 'çok zor' : level % 5 === 0 ? 'zor' : 'normal';
+      if (award && typeof award.score === 'number') lastScore = award.score;
+      awardDoneFor = g;
+      wins.push({ p: award?.p || 0, at: Date.now(), speed, level, secs, boxes: boxesAtWin, stars, tier,
+        score: award?.score ?? null,
         note: award ? (award.p ? '' : String(award.why ?? 'neden yok')) : 'cevap yok' });
       if (wins.length > 200) wins.shift();
       showStats();
@@ -674,6 +680,16 @@
         stop('Bu bölümde 3 yıldız sınırı aşılmış. Sonraki bölüme geçilmedi.'); return;
       }
       if (mode === 'auto') trackPoints(g);
+      // Target score: wait for this win's award, then stop before overshooting.
+      const goal = Math.max(0, Number(goalBox.value) || 0);
+      if (mode === 'auto' && goal) {
+        if (awardDoneFor !== g) { say('Hedef puan modu: sunucunun verdiği puan bekleniyor...'); return; }
+        if (lastScore !== null) {
+          const left = goal - lastScore;
+          if (left <= 0) { stop(left === 0 ? `Hedef tam tutturuldu: ${lastScore}.` : `Hedef ${-left} puan aşıldı (${lastScore}).`); return; }
+          if (left < 1000) { stop(`Hedefe ${left} puan kaldı (${lastScore}). Son bölümler kontrollü oynanacak, bot durdu.`); return; }
+        }
+      }
       const target = Math.max(0, Number(targetBox.value) || 0);
       if (mode === 'auto' && nextBox.checked && holdLead()) return;
       if (target && g.level.n >= target) { stop(`${g.level.n}. bölüm tamamlandı. Hedefe ulaşıldı.`); return; }
@@ -860,6 +876,7 @@
       <label><input class="runguard" type="checkbox" checked> Sunucu bölümü kaydetmediyse oynama</label>
       <label><input class="turbo" type="checkbox"> Turbo: daha hızlı, yıldız biraz düşebilir</label>
       <label>Lider farkı: <input class="lead" type="number" min="0" step="100" value="1000" style="width:70px"> puan (0 = kapalı)</label>
+      <label>Hedef puan: <input class="goal" type="number" min="0" step="50" value="0" style="width:90px"> (0 = kapalı, 1000 kala durur)</label>
       <label>Hedef bölüm: <input class="target" type="number" min="0" step="1" value="0" style="width:70px"> (0 = sınırsız)</label>
       <details><summary>Çözüm hakkında</summary>Kutuları güvenli olduğu anda üst üste bırakır; ulaşılan yıldız seviyesini korur. Turbo bu sınırı plan tahminine kadar gevşetir. Lider farkı: 1. sıradayken arkandakiyle fark bu değere ulaşınca bölüm arasında bekler, fark düşünce devam eder. Önce 3 yıldızlık güvenli plan arar. Bulamazsa en iyi bulduğu planla devam eder; her bölümde 3 yıldız garanti değildir. Kaybedilen veya takılan mevcut bölümü yeniden dener. Sekme gizlenince duraklar; uyku veya kilit ekranında çalışma garantisi yoktur. Tamamlanan bölümleri sıfırlamaz.</details>
     </section>`;
@@ -868,6 +885,7 @@
     runGuardBox = root.querySelector('.runguard');
     prepareBox = root.querySelector('.prepare');
     minBox = root.querySelector('.minsec');
+    goalBox = root.querySelector('.goal');
     hookFetch();
     nextBox = root.querySelector('.next');
     fastBox = root.querySelector('.fast');
